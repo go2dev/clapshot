@@ -311,6 +311,14 @@ function togglePlay() {
     setPlayback(should_play, "VideoPlayer");
 }
 
+// Toggle whole-clip / in-out looping. Shared by the 'l' shortcut and the on-screen button.
+function toggleLoop() {
+    if (!videoElem) return;
+    videoElem.loop = !videoElem.loop;
+    if (!videoElem.loop) { loopStartTime = -1; loopEndTime = -2; }
+    loop = videoElem.loop;
+}
+
 // Exit fullscreen if currently active (e.g. when showing a comment, whose panel
 // lives outside the fullscreen element). No-op when not in fullscreen.
 export function exitFullscreen() {
@@ -429,10 +437,7 @@ const WINDOW_KEY_ACTIONS: {[key: string]: (e: KeyboardEvent)=>any} = {
         'y': (e) => { if (e.ctrlKey) onDrawRedo(); },
         'i': () => setLoopPoint(true),
         'o': () => setLoopPoint(false),
-        'l': () => {
-            if (videoElem) { videoElem.loop = !videoElem.loop; }
-            if (!videoElem.loop) { loopStartTime = -1; loopEndTime = -2; }
-        },
+        'l': () => toggleLoop(),
         'f': () => toggleFullscreen(),
     };
 
@@ -830,14 +835,14 @@ function handlePinClick(id: string) {
 		</div>
 
 
-		<!-- playback controls -->
-		<div class="flex p-1">
+		<!-- playback controls. Wraps onto several rows on narrow / touch screens. -->
+		<div class="flex flex-wrap items-center p-1">
 
 			<!-- Play/Pause -->
-			<span class="flex-1 text-left ml-8 space-x-3 text-l whitespace-nowrap">
-				<button class="hover:text-amber-600 fa-solid fa-chevron-left" onclick={() => step_video(-1)} disabled={time==0} title="Step backwards" aria-label="Step backwards"></button>
-				<button class="hover:text-amber-600 w-4 fa-solid {paused ? (loop ? 'fa-repeat' : 'fa-play') : 'fa-pause'}" id="playbutton" onclick={togglePlay} title="Play/Pause" aria-label="Play/Pause"></button>
-				<button class="hover:text-amber-600 fa-solid fa-chevron-right" onclick={() => step_video(1)} title="Step forwards" aria-label="Step forwards"></button>
+			<span class="flex-1 text-left ml-8 space-x-3 text-l whitespace-nowrap pointer-coarse:ml-0 pointer-coarse:whitespace-normal">
+				<button class="ctrl-btn hover:text-amber-600 fa-solid fa-chevron-left" onclick={() => step_video(-1)} disabled={time==0} title={$t("Step backwards (←)")} aria-label={$t("Step backwards")}></button>
+				<button class="ctrl-btn hover:text-amber-600 w-4 fa-solid {paused ? (loop ? 'fa-repeat' : 'fa-play') : 'fa-pause'}" id="playbutton" onclick={togglePlay} title={$t("Play/Pause (Space)")} aria-label={$t("Play/Pause")}></button>
+				<button class="ctrl-btn hover:text-amber-600 fa-solid fa-chevron-right" onclick={() => step_video(1)} title={$t("Step forwards (→)")} aria-label={$t("Step forwards")}></button>
 
 				<!-- Timecode -->
 				<span class="flex-0 mx-4 text-sm font-mono">
@@ -845,29 +850,34 @@ function handlePinClick(id: string) {
 					FR <input class="bg-transparent hover:bg-gray-700 w-16" value="{currentFrame}" onchange={(e) => onFrameEdited(e)}/>
 				</span>
 
-               {#if !$collabId}
-                    <!-- Loop control (in, loop-toggle, out) -->
-                    <span class="flex-0 px-4 text-sm">
-                        <button class="fa-solid fa-square-caret-down hover:text-white {loopStartTime>=0 ? 'text-amber-600' : 'text-gray-400'}"
-                            onclick={() => setLoopPoint(true)} title="Set loop start to current frame" aria-label="Set loop start to current frame"></button>
-                        <button class="fa-solid fa-square-caret-up hover:text-white {loopEndTime>=0 ? 'text-amber-600' : 'text-gray-400'}"
-                            onclick={() => setLoopPoint(false)} title="Set loop end to current frame" aria-label="Set loop end to current frame"></button>
-                    </span>
-                {/if}
+                <!-- Loop control (in, loop-toggle, out). In/out points are disabled in collab mode (hard to sync). -->
+                <span class="flex-0 px-4 text-sm">
+                    {#if !$collabId}
+                        <button class="ctrl-btn fa-solid fa-square-caret-down hover:text-white {loopStartTime>=0 ? 'text-amber-600' : 'text-gray-400'}"
+                            onclick={() => setLoopPoint(true)} title={$t("Set loop start to current frame (i)")} aria-label={$t("Set loop start to current frame")}></button>
+                    {/if}
+                    <button class="ctrl-btn fa-solid fa-repeat hover:text-white {loop ? 'text-amber-600' : 'text-gray-400'}"
+                        id="loopbutton" onclick={toggleLoop} aria-pressed={loop}
+                        title={$t("Toggle loop (l)")} aria-label={$t("Toggle loop")}></button>
+                    {#if !$collabId}
+                        <button class="ctrl-btn fa-solid fa-square-caret-up hover:text-white {loopEndTime>=0 ? 'text-amber-600' : 'text-gray-400'}"
+                            onclick={() => setLoopPoint(false)} title={$t("Set loop end to current frame (o)")} aria-label={$t("Set loop end to current frame")}></button>
+                    {/if}
+                </span>
 			</span>
 
             <!-- Closed captioning -->
             <span class="flex-0 text-center whitespace-nowrap">
                 {#if ($curVideo?.subtitles?.length ?? 0) > 0}
                     <button
-                        class={ $curSubtitle ? 'fa-solid fa-closed-captioning text-amber-600' : 'fa-solid fa-closed-captioning text-gray-400' }
+                        class="ctrl-btn fa-solid fa-closed-captioning {$curSubtitle ? 'text-amber-600' : 'text-gray-400'}"
                         title="Toggle closed captioning"
                         aria-label="Toggle closed captioning"
                         onclick={() => toggleSubtitle()}
                     ></button>
                 {:else}
                     <button bind:this={uploadSubtitlesButton}
-                        class="fa-solid fa-closed-captioning text-gray-400" title="Upload subtitles"
+                        class="ctrl-btn fa-solid fa-closed-captioning text-gray-400" title="Upload subtitles"
                         aria-label="Upload subtitles"
                         onmouseover={() => { changeSubtitleUploadIcon(true); }}
                         onfocus={() => { changeSubtitleUploadIcon(true); }}
@@ -881,7 +891,7 @@ function handlePinClick(id: string) {
 			<!-- Audio volume -->
 			<span class="flex-0 text-center whitespace-nowrap">
 				<button
-					class="fas {(audio_volume ?? 0)>0 ? 'fa-volume-high' : 'fa-volume-mute'} mx-2"
+					class="ctrl-btn fas {(audio_volume ?? 0)>0 ? 'fa-volume-high' : 'fa-volume-mute'} mx-2"
 					aria-label="{(audio_volume ?? 0)>0 ? 'Mute audio' : 'Unmute audio'}"
 					onclick={() => audio_volume = (audio_volume ?? 0)>0 ? 0 : 50}
 					></button>
@@ -889,15 +899,15 @@ function handlePinClick(id: string) {
 			</span>
 
 			<!-- Video duration -->
-			<span class="flex-0 text-lg mx-4">{format_tc(getEffectiveDuration())}</span>
+			<span class="flex-0 text-lg mx-4 whitespace-nowrap">{format_tc(getEffectiveDuration())}</span>
 
 			<!-- Fullscreen toggle -->
 			<span class="flex-0 text-center whitespace-nowrap">
 				<button
-					class="hover:text-amber-600 fa-solid {isFullscreen ? 'fa-compress' : 'fa-expand'} mx-2"
+					class="ctrl-btn hover:text-amber-600 fa-solid {isFullscreen ? 'fa-compress' : 'fa-expand'} mx-2"
 					onclick={toggleFullscreen}
-					title="Toggle fullscreen (f)"
-					aria-label="Toggle fullscreen"
+					title={$t("Toggle fullscreen (f)")}
+					aria-label={$t("Toggle fullscreen")}
 				></button>
 			</span>
 		</div>
@@ -911,6 +921,21 @@ function handlePinClick(id: string) {
 
 button:disabled {
     opacity: 0.3;
+}
+
+/* Transport / toolbar buttons. Icons stay small; on touch devices the hit area grows
+   to a finger-sized square and double-tap-to-zoom is disabled so taps register at once. */
+.ctrl-btn {
+    touch-action: manipulation;
+}
+@media (pointer: coarse) {
+    .ctrl-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.75rem;   /* 44px */
+        min-height: 2.75rem;
+    }
 }
 progress::-webkit-progress-bar {
     background-color: rgba(0,0,0,0.2);

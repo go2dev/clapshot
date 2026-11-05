@@ -216,9 +216,9 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
     it('should render essential control buttons', () => {
       render(VideoPlayer, { props: { src: 'test-video.mp4' } });
 
-      expect(screen.getByTitle('Play/Pause')).toBeInTheDocument();
-      expect(screen.getByTitle('Step backwards')).toBeInTheDocument();
-      expect(screen.getByTitle('Step forwards')).toBeInTheDocument();
+      expect(screen.getByTitle('Play/Pause (Space)')).toBeInTheDocument();
+      expect(screen.getByTitle('Step backwards (←)')).toBeInTheDocument();
+      expect(screen.getByTitle('Step forwards (→)')).toBeInTheDocument();
     });
 
     it('should render progress bar', () => {
@@ -750,7 +750,7 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
       expect(component.isPaused()).toBe(true);
       
       // Find and click the play button
-      const playButton = screen.getByTitle('Play/Pause');
+      const playButton = screen.getByTitle('Play/Pause (Space)');
       expect(playButton).toBeInTheDocument();
       
       expect(() => {
@@ -780,8 +780,8 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
     it('should handle step button interactions', async () => {
       render(VideoPlayer, { props: { src: 'test-video.mp4' } });
       
-      const stepBackward = screen.getByTitle('Step backwards');
-      const stepForward = screen.getByTitle('Step forwards');
+      const stepBackward = screen.getByTitle('Step backwards (←)');
+      const stepForward = screen.getByTitle('Step forwards (→)');
       
       expect(stepBackward).toBeInTheDocument();
       expect(stepForward).toBeInTheDocument();
@@ -849,8 +849,8 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
         render(VideoPlayer, { props: { src: 'test-video.mp4' } });
         
         // Loop control buttons should not be present in collab mode
-        expect(screen.queryByTitle('Set loop start to current frame')).not.toBeInTheDocument();
-        expect(screen.queryByTitle('Set loop end to current frame')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('Set loop start to current frame (i)')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('Set loop end to current frame (o)')).not.toBeInTheDocument();
       });
     });
 
@@ -1167,14 +1167,14 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
       });
       
       // Test loop in point button
-      const loopInButton = screen.getByTitle('Set loop start to current frame');
+      const loopInButton = screen.getByTitle('Set loop start to current frame (i)');
       
       expect(() => {
         fireEvent.click(loopInButton);
       }).not.toThrow();
       
       // Test loop out point button  
-      const loopOutButton = screen.getByTitle('Set loop end to current frame');
+      const loopOutButton = screen.getByTitle('Set loop end to current frame (o)');
       
       expect(() => {
         fireEvent.click(loopOutButton);
@@ -1187,8 +1187,36 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
       render(VideoPlayer, { props: { src: 'test-video.mp4' } });
       
       // Loop controls should not be present in collab mode
-      expect(screen.queryByTitle('Set loop start to current frame')).not.toBeInTheDocument();
-      expect(screen.queryByTitle('Set loop end to current frame')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Set loop start to current frame (i)')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Set loop end to current frame (o)')).not.toBeInTheDocument();
+    });
+
+    it('should expose the loop toggle (keyboard "l") as an on-screen button', () => {
+      const { component } = render(VideoPlayer, { props: { src: 'test-video.mp4' } });
+
+      const loopButton = screen.getByTitle('Toggle loop (l)');
+      expect(loopButton).toBeInTheDocument();
+      expect(loopButton).toHaveAttribute('aria-pressed', 'false');
+      expect(component.isLooping()).toBe(false);
+
+      fireEvent.click(loopButton);
+      expect(component.isLooping()).toBe(true);
+      expect(loopButton).toHaveAttribute('aria-pressed', 'true');
+      expect((document.querySelector('video') as HTMLVideoElement).loop).toBe(true);
+
+      fireEvent.click(loopButton);
+      expect(component.isLooping()).toBe(false);
+      expect((document.querySelector('video') as HTMLVideoElement).loop).toBe(false);
+    });
+
+    it('should keep the loop toggle button available in collaboration mode', () => {
+      collabId.set('collab-session-123');
+
+      render(VideoPlayer, { props: { src: 'test-video.mp4' } });
+
+      // Whole-clip looping is syncable (collabPlay/collabPause carry a loop flag);
+      // only the custom in/out points are hidden in collab mode.
+      expect(screen.getByTitle('Toggle loop (l)')).toBeInTheDocument();
     });
 
     it('should handle time update for loop regions', () => {
@@ -1527,7 +1555,7 @@ describe('VideoPlayer.svelte - Elementary Tests', () => {
 
         // STEP 12: Loop region for review
         // User sets up a loop to review their comment area (if not in collaboration mode)
-        const loopInButton = screen.queryByTitle('Set loop start to current frame');
+        const loopInButton = screen.queryByTitle('Set loop start to current frame (i)');
         const initialLoopState = component.isLooping();
         
         if (loopInButton) {
