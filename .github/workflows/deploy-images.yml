@@ -1,0 +1,82 @@
+name: Build + push deploy images (ghcr.io)
+
+# Builds the per-service runtime images (clapshot-server, clapshot-web) from THIS
+# repo's sources and pushes them to ghcr.io/<owner>, so a deployment can run this
+# fork instead of the upstream images. amd64 / Debian trixie only (the VPS target).
+#
+# Tags pushed per run:
+#   sha-<short sha>   -- immutable, what a deployment should pin to
+#   <branch name>     -- moving tag for the branch (slashes -> dashes)
+#   latest            -- only when building master
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-images-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_VER: trixie
+  TARGET_ARCH: amd64
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .debs (${{ env.DEBIAN_VER }}/${{ env.TARGET_ARCH }})
+        run: make debian-docker-one DEBIAN_VER=$DEBIAN_VER TARGET_ARCH=$TARGET_ARCH
+
+      - name: List built packages
+        run: ls -la dist_deb/
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          NS="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          BRANCH="${GITHUB_REF_NAME//\//-}"
+          TAGS="sha-${SHORT_SHA} ${BRANCH}"
+          if [ "$GITHUB_REF_NAME" = "master" ]; then TAGS="$TAGS latest"; fi
+          echo "ns=$NS" >> "$GITHUB_OUTPUT"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "Namespace: $NS  Tags: $TAGS"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push clapshot-server and clapshot-web
+        env:
+          NS: ${{ steps.tags.outputs.ns }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          for img in server web; do
+            args=()
+            for t in $TAGS; do args+=(-t "$NS/clapshot-$img:$t"); done
+            docker buildx build --platform linux/amd64 --pull --push \
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              "${args[@]}" -f deploy/docker/clapshot-$img.Dockerfile .
+          done
+
+      - name: Summary
+        env:
+          NS: ${{ steps.tags.outputs.ns }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          { echo "### Images pushed"; for t in $TAGS; do echo "- \`$NS/clapshot-server:$t\`"; echo "- \`$NS/clapshot-web:$t\`"; done; } >> "$GITHUB_STEP_SUMMARY"
