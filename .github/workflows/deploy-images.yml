@@ -11,7 +11,7 @@ name: Build + push deploy images (ghcr.io)
 
 on:
   push:
-    branches: [master]
+    branches: [master, touch-player-controls]
   workflow_dispatch: {}
 
 concurrency:
