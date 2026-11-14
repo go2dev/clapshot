@@ -70,6 +70,14 @@ import * as Proto3 from '@clapshot_protobuf/typescript';
    *    - selectedTiles store tracks multiple items for drag operations
    *    - Extremely complex interaction between selection state and drag events
    *
+   * 9. **Touch Devices**:
+   *    - Browsers never synthesize `dblclick` from a double tap, so tiles were impossible to
+   *      open by touch. The `tapToOpen` action opens an item on a single short tap instead.
+   *    - When dragging is enabled the library calls preventDefault()+stopPropagation() on
+   *      `touchstart`, which kills Svelte's delegated on* touch handlers AND page scrolling.
+   *      Hence: tapToOpen uses direct addEventListener (not on*), and `delayTouchStart` makes
+   *      touch drags require a press-and-hold so a swipe scrolls the list instead.
+   *
    * BEFORE MAKING CHANGES:
    * - Test ALL interaction modes: mouse click, drag, keyboard nav, multi-select, range select
    * - Test drop-into-folder functionality specifically
@@ -360,6 +368,56 @@ function enterKeyInterceptor(node: HTMLElement) {
         }
     };
 }
+
+// Touch: a single short tap opens the item (there is no double tap -> dblclick on touch browsers).
+// Press-and-hold (>= TOUCH_DRAG_HOLD_MS) hands the gesture to svelte-dnd-action as a drag, and
+// moving the finger further than TAP_MAX_MOVE_PX is a scroll. Attached with addEventListener
+// because the dnd library stops propagation of touchstart, which would starve Svelte's delegated
+// ontouchstart handlers when dragging is enabled.
+const TOUCH_DRAG_HOLD_MS = 350;
+const TAP_MAX_MOVE_PX = 10;
+const TAP_MAX_MS = 300;
+
+function tapToOpen(node: HTMLElement, itemId: string) {
+    let start: { x: number, y: number, t: number } | null = null;
+
+    function onTouchStart(e: TouchEvent) {
+        if (e.touches.length !== 1) { start = null; return; }   // multi-finger: not a tap
+        const t = e.touches[0];
+        start = { x: t.clientX, y: t.clientY, t: performance.now() };
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+        const s = start;
+        start = null;
+        if (!s || isDragging || e.touches.length > 0) return;
+        const t = e.changedTouches[0];
+        if (!t) return;
+        const moved = Math.hypot(t.clientX - s.x, t.clientY - s.y);
+        if (moved > TAP_MAX_MOVE_PX || performance.now() - s.t > TAP_MAX_MS) return;
+
+        // Suppress the browser's synthesized mousedown/mouseup/click (which would re-select the
+        // tile) and double-tap-to-zoom, then open directly.
+        e.preventDefault();
+        $selectedTiles = {};
+        dispatchOpenItem(itemId);
+    }
+
+    function onTouchCancel() { start = null; }
+
+    node.addEventListener('touchstart', onTouchStart, { passive: true });
+    node.addEventListener('touchend', onTouchEnd);           // not passive: calls preventDefault()
+    node.addEventListener('touchcancel', onTouchCancel);
+
+    return {
+        update(newItemId: string) { itemId = newItemId; },
+        destroy() {
+            node.removeEventListener('touchstart', onTouchStart);
+            node.removeEventListener('touchend', onTouchEnd);
+            node.removeEventListener('touchcancel', onTouchCancel);
+        }
+    };
+}
 </script>
 
 <div use:enterKeyInterceptor>
@@ -368,6 +426,7 @@ function enterKeyInterceptor(node: HTMLElement) {
             items, dragDisabled,
             transformDraggedElement,
             centreDraggedOnCursor: true,
+            delayTouchStart: TOUCH_DRAG_HOLD_MS,
             dropTargetClasses: ['activeDropTarget'],
             dropTargetStyle: {},
             }}"
@@ -392,6 +451,7 @@ function enterKeyInterceptor(node: HTMLElement) {
                 ondblclick={(_e) => {$selectedTiles = {}; dispatchOpenItem(item.id)}}
                 onmousedown={(e) => handleMouseDown(item.id, e)}
                 onmouseup={(e) => handleMouseUp(e, item)}
+                use:tapToOpen={item.id}
                 onkeydown={(e) => handleKeyDown(item.id, e)}
                 oncontextmenu={(e) => {
                     e.preventDefault();
@@ -443,6 +503,7 @@ function enterKeyInterceptor(node: HTMLElement) {
 
     overflow: clip;
     cursor: pointer;
+    touch-action: manipulation;   /* taps register at once: no double-tap-to-zoom wait */
 }
 
 :global(.video-list-tile-sqr:hover) {
